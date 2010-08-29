@@ -1,0 +1,28 @@
+Grapple
+======================================
+
+Window management is a pain in the neck. Why reach for the title
+bar just to move your window? Why must you point your mouse at the
+ultra-thin window borders to resize? It's needlessly cumbersome.
+
+Enter Grapple. It lets you manage windows quickly and easily:
+
+- Hold down ALT and left-drag anywhere on a window to move it around.
+- Hold down ALT and right-drag anywhere on a window to resize it from
+  the nearest corner.
+- Hold down ALT and middle-click anywhere on a window to send it to
+  the bottom of the stack of all open windows. Convenient for revealing
+  everything below a certain window.
+
+Grapple lets you use the entire window as the "target area" to
+perform a move or resize operation. Try it for awhile, and you'll
+never realize how useful it is until you find yourself on a computer
+without it!
+
+Grapple is designed to be extremely lightweight and unintrusive. When
+it starts up, the only UI is an icon in the system tray that lets you
+enable or disable Grapple. That's all there is to it.
+
+Grapple runs on Win XP/Vista/7. It is a 32-bit application, but it
+should run just fine on x64 systems. (My own machine runs Win7 x64.)
+
