@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Grapple", "Grapple\Grapple.vcxproj", "{05724804-A36B-4119-A7E8-AB7C5D736C09}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GrappleLib", "GrappleLib\GrappleLib.vcxproj", "{726DEBC3-0F90-4FEC-A3CD-46A452941FBC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{05724804-A36B-4119-A7E8-AB7C5D736C09}.Debug|Win32.ActiveCfg = Debug|Win32
+		{05724804-A36B-4119-A7E8-AB7C5D736C09}.Debug|Win32.Build.0 = Debug|Win32
+		{05724804-A36B-4119-A7E8-AB7C5D736C09}.Release|Win32.ActiveCfg = Release|Win32
+		{05724804-A36B-4119-A7E8-AB7C5D736C09}.Release|Win32.Build.0 = Release|Win32
+		{726DEBC3-0F90-4FEC-A3CD-46A452941FBC}.Debug|Win32.ActiveCfg = Debug|Win32
+		{726DEBC3-0F90-4FEC-A3CD-46A452941FBC}.Debug|Win32.Build.0 = Debug|Win32
+		{726DEBC3-0F90-4FEC-A3CD-46A452941FBC}.Release|Win32.ActiveCfg = Release|Win32
+		{726DEBC3-0F90-4FEC-A3CD-46A452941FBC}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
