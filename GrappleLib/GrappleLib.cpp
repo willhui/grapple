@@ -1,7 +1,6 @@
 /*
 ** Grapple
 ** Copyright (C) 2005-2010 Will Hui.
-** All rights reserved.
 **
 ** Distributed under the terms of the MIT license.
 ** See LICENSE file for details.

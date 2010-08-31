@@ -1,7 +1,6 @@
 /*
 ** Grapple
 ** Copyright (C) 2005-2010 Will Hui.
-** All rights reserved.
 **
 ** Distributed under the terms of the MIT license.
 ** See LICENSE file for details.
@@ -298,7 +297,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 			break;
 		case MY_ABOUT:
 			ShowAboutBox(
-				TEXT("%s v%s\nCopyright (C) 2005-2010 Will Hui\nAll rights reserved."),
+				TEXT("%s v%s\nCopyright (C) 2005-2010 Will Hui"),
 				APP_NAME, APP_VERSION);
 			break;
 		case MY_QUIT:
