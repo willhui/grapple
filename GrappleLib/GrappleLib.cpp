@@ -19,6 +19,10 @@
 ** > Change the systray icon to indicate whether Grapple is currently enabled
 **   or disabled.
 **
+** 3.2:
+** > Smarter detection of "tangible" windows that should be selected for move
+**   and resize operations.
+**
 ** 3.1:
 ** > More robust window tracking in the face of mouse drift while dragging.
 **   We remember the hwnd used to start the move/resize operation and then reuse
@@ -80,13 +84,13 @@
 
 #include "stdafx.h"
 #include "GrappleLib.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 #define QUASIMODE VK_MENU    // ALT key.
 
-const int ERROR_STRING_SIZE = 1024;
+static const int ERROR_STRING_SIZE = 1024;
 
 static HANDLE dllHandle;
 
@@ -144,6 +148,11 @@ static void Log(const char *format, ...)
 		fprintf(f, "%s\n", buf);
 		fclose(f);
 	}
+}
+
+static inline bool IsSet(int styles, int mask)
+{
+	return (styles & mask) != 0;
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule,DWORD ul_reason_for_call, LPVOID lpReserved)
@@ -368,6 +377,32 @@ static LRESULT CALLBACK KbProc(const int code, const WPARAM wParam, const LPARAM
 		return CallNextHookEx(kbHook, code, wParam, lParam);
 }
 
+// We say a window is "tangible" if it makes sense to move/resize it on-screen
+// for the user. This function takes a window handle and searches up the window
+// hierarchy for the first tangible window it can find.
+static HWND GetTangibleWindow(HWND hwnd, bool debug)
+{
+	const HWND desktop = GetDesktopWindow();
+	HWND prev = NULL;
+	HWND window = hwnd;
+
+	// GetAncestor() is supposed to return NULL upon reaching the desktop window
+	// according to MSDN. But the documentation is wrong, so we explicitly check
+	// for the desktop window handle ourselves.
+	while (window != NULL && window != desktop) {
+		const int style = GetWindowLong(window, GWL_STYLE);
+
+		const bool isChild = IsSet(style, WS_CHILD) || IsSet(style, WS_CHILDWINDOW);
+		if (!isChild && IsSet(style, WS_POPUP))
+			return window;
+
+		prev = window;
+		window = GetAncestor(window, GA_PARENT);
+	}
+
+	return prev;
+}
+
 // Global mouse hook procedure.
 static LRESULT WINAPI CALLBACK MouseProc(const int nCode, const WPARAM wParam, const LPARAM lParam)
 {
@@ -375,7 +410,7 @@ static LRESULT WINAPI CALLBACK MouseProc(const int nCode, const WPARAM wParam, c
 
 	if (nCode >= 0) {
 		const MOUSEHOOKSTRUCT *mouseHookStruct = (MOUSEHOOKSTRUCT *)lParam;
-		const HWND hwnd = GetAncestor(mouseHookStruct->hwnd, GA_ROOTOWNER);
+		const HWND hwnd = GetTangibleWindow(mouseHookStruct->hwnd, false);
 		WINDOWPLACEMENT placement;
 		placement.length = sizeof(WINDOWPLACEMENT);
 		
