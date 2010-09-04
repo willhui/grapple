@@ -42,7 +42,7 @@ typedef void (WINAPI *RemoveHookFn)(void);
 
 
 const TCHAR *APP_NAME = TEXT("Grapple");
-const TCHAR *APP_VERSION = TEXT("3.1");
+const TCHAR *APP_VERSION = TEXT("3.2");
 const TCHAR *DLL_FILE = TEXT("GrappleLib.dll");
 const int MAX_LOADSTRING = 100;
 

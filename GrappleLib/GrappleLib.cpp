@@ -8,20 +8,38 @@
 ** GrappleLib.cpp
 ** DLL entrypoint. This is where all the real work occurs.
 **
-** Todo for future:
-** ----
-** > Right-click taskbar --> "Properties". Next to "Hide Inactive Icons", click
-**   "Customize". In the list, the entry for Grapple is untitled. Figure out how
-**   to give the systray icon a name.
-** > Allow the user to blacklist certain applications from Grapple's influence.
-** > Allow the user to customize the hotkey and enable/disable individual features
-**   of Grapple.
-** > Change the systray icon to indicate whether Grapple is currently enabled
-**   or disabled.
+** Known issues:
+** - Send-to-back sometimes fails to give input focus to the next foreground
+**   window that is activated. I believe this is a 32/64-bit issue, as I have
+**   only been able to repro the bug when switching between a 32-bit app and
+**   a 64-bit app.
+** - Grapple will not work on administrator-level windows when Grapple itself
+**   is running without administrator permissions.
+** - We are making the assumption that EnumWindows() enumerates through
+**   windows in z-order, from front to back. Nothing in the documentation
+**   guarantees that this will always be the case. However, the only
+**   other window enumeration method I know of is GetNextWindow(), which
+**   isn't too reliable. So if EnumWindows() ever deviates from z-order,
+**   I guess we're stuck...
+** - We currently allow "Always On Top" windows to get sent to the back of
+**   the z-order. They lose their "Always On Top" status when sent to
+**   the back. Is this acceptable?
+** - There is currently no way to blacklist misbehaving applications from
+**   Grapple's influence.
 **
 ** 3.2:
 ** > Smarter detection of "tangible" windows that should be selected for move
 **   and resize operations.
+** > Better heuristics for selecting the next foreground window after sending
+**   a window to the back of the z-order.
+** > Configured the vcproj files to allow building a 64-bit version of Grapple.
+**   Technically, this is the correct things to do, but most things seem to work
+**   without it. Right now the build defaults to x86.
+** > Removed the very first feature this application had. You can no longer
+**   middle click (without holding ALT) on a window's title bar in order to send
+**   it to the back of the z-order. You must hold ALT. This old behavior was
+**   inspired by BeOS, but I've too often activated it by accident when trying
+**   to close tabs with middle clicks in Google Chrome.
 **
 ** 3.1:
 ** > More robust window tracking in the face of mouse drift while dragging.
@@ -60,26 +78,6 @@
 **   it failed to work with the e text editor. This bug is now fixed.
 ** > Attempt to fix the menu bar input focus side-effect.
 **
-**
-**
-** Issues:
-** [ ] Grapple will not work on administrator-level windows when Grapple itself
-**     is running without administrator permissions.
-** [ ] We are making the assumption that EnumWindows() enumerates through
-**     windows in z-order, from front to back. Nothing in the documentation
-**     guarantees that this will always be the case. However, the only
-**     other window enumeration method I know of is GetNextWindow(), which
-**     isn't too reliable. So if EnumWindows() ever deviates from z-order,
-**     I guess we're stuck.
-** [ ] In IsTopLevelWindow(), we discard childless WS_POPUP window handles.
-**     This seems to be OK, but I'm not 100% sure that we can assume that
-**     a childless WS_POPUP window is not a tangible window. The reason
-**     for adding this check in the first place is because DeadAIM's tabbed
-**     conversation window uses an owned, childless, WS_POPUP that would get
-**     activated instead of the real window.
-** [ ] We currently allow "Always On Top" windows to get sent to the back of
-**     the z-order. They lose their "Always On Top" status when sent to
-**     the back. Is this acceptable?
 */
 
 #include "stdafx.h"
@@ -155,6 +153,19 @@ static inline bool IsSet(int styles, int mask)
 	return (styles & mask) != 0;
 }
 
+static HWND GetParentWindow(HWND hwnd)
+{
+	HWND parent = GetAncestor(hwnd, GA_PARENT);
+
+	// GetAncestor() is supposed to return NULL upon reaching the desktop window
+	// according to MSDN. But the documentation is wrong, so we explicitly check
+	// for the desktop window handle ourselves.
+	if (parent == GetDesktopWindow())
+		parent = NULL;
+
+	return parent;
+}
+
 BOOL APIENTRY DllMain(HMODULE hModule,DWORD ul_reason_for_call, LPVOID lpReserved)
 {
 	dllHandle = hModule;
@@ -215,27 +226,6 @@ static HWND GetOwnerWindow(HWND hwnd)
 	return last;
 }
 
-// Determine if a given window handle is a top-level owner or owned window.
-static bool IsTopLevelWindow(HWND hwnd)
-{
-	const int style = GetWindowLong(hwnd, GWL_STYLE);
-	const int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-
-	// Special case for DeadAIM.
-	if ((style & WS_POPUP) && (GetWindow(hwnd, GW_CHILD) == NULL))
-		return false;
-
-	// Not a tool window? Then it's a pretty good bet that this is top-level.
-	if (!(exStyle & WS_EX_TOOLWINDOW))
-		return true;
-
-	// Application windows are always top-level.
-	if (exStyle & WS_EX_APPWINDOW)
-		return true;
-
-	return false;
-}
-
 static inline BOOL IsMinimized(HWND hwnd)
 {
 	return IsIconic(hwnd);
@@ -251,6 +241,54 @@ static bool IsFullScreen(HWND hwnd)
 	return (width == (r.right - r.left)) && (height == (r.bottom - r.top));
 }
 
+// Reference: http://blogs.msdn.com/b/oldnewthing/archive/2007/10/08/5351207.aspx
+static bool IsAltTabWindow(HWND hwnd)
+{
+	// Start at the root owner.
+	HWND hwndWalk = GetAncestor(hwnd, GA_ROOTOWNER);
+
+	// See if we are the last active visible popup.
+	HWND hwndTry;
+	while ((hwndTry = GetLastActivePopup(hwndWalk)) != hwndTry) {
+		if (IsWindowVisible(hwndTry))
+			break;
+		hwndWalk = hwndTry;
+	}
+	return hwndWalk == hwnd;
+}
+
+// Check if a given window is reasonable to activate after a send-to-back operation.
+static bool CanBringToTop(HWND hwnd)
+{
+	const int style = GetWindowLong(hwnd, GWL_STYLE);
+	const int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+
+	// If we can't activate it, don't bother.
+	
+	if (IsSet(exStyle, WS_EX_NOACTIVATE))
+		return false;
+
+	if (IsSet(style, WS_DISABLED))
+		return false;
+	
+	if (!IsWindowVisible(hwnd))
+		return false;
+	
+	// These window states would be counter-intuitive to activate.
+
+	if (IsMinimized(hwnd))
+		return false;
+
+	if (IsFullScreen(hwnd))
+		return false;
+
+	// Tool windows should always be excluded.
+	if (IsSet(exStyle, WS_EX_TOOLWINDOW))
+		return false;
+	
+	return IsAltTabWindow(hwnd);
+}
+
 // Enumerate over all desktop windows so we can bring the next-highest
 // window in the z-order to the foreground and activate it.
 static BOOL WINAPI CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
@@ -259,9 +297,8 @@ static BOOL WINAPI CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	const HWND owner = GetOwnerWindow(hwnd);
 	const HWND sbowner = GetOwnerWindow(sbwnd);
 
-	if (IsWindowVisible(owner) && !IsMinimized(owner) && IsTopLevelWindow(owner) &&
-			!IsFullScreen(owner) && (owner != sbowner)) {
-		BringWindowToTop(owner);
+	if (CanBringToTop(hwnd) && (owner != sbowner)) {
+		BringWindowToTop(hwnd);
 		SetWindowPos(sbwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 		return FALSE;
 	}
@@ -382,14 +419,10 @@ static LRESULT CALLBACK KbProc(const int code, const WPARAM wParam, const LPARAM
 // hierarchy for the first tangible window it can find.
 static HWND GetTangibleWindow(HWND hwnd, bool debug)
 {
-	const HWND desktop = GetDesktopWindow();
 	HWND prev = NULL;
 	HWND window = hwnd;
 
-	// GetAncestor() is supposed to return NULL upon reaching the desktop window
-	// according to MSDN. But the documentation is wrong, so we explicitly check
-	// for the desktop window handle ourselves.
-	while (window != NULL && window != desktop) {
+	while (window != NULL) {
 		const int style = GetWindowLong(window, GWL_STYLE);
 
 		const bool isChild = IsSet(style, WS_CHILD) || IsSet(style, WS_CHILDWINDOW);
@@ -397,7 +430,7 @@ static HWND GetTangibleWindow(HWND hwnd, bool debug)
 			return window;
 
 		prev = window;
-		window = GetAncestor(window, GA_PARENT);
+		window = GetParentWindow(window);
 	}
 
 	return prev;
@@ -423,14 +456,12 @@ static LRESULT WINAPI CALLBACK MouseProc(const int nCode, const WPARAM wParam, c
 			}
 			break;
 
-		case WM_MBUTTONUP:
-			if (!inSendBackState || IsFullScreen(hwnd))
-				break;
-			// Fall through.
-
 		case WM_NCMBUTTONUP:
-			if (!IsFullScreen(hwnd)) {
-				EnumWindows(EnumWindowsProc, (LPARAM)hwnd);
+		case WM_MBUTTONUP:
+			if (inSendBackState) {
+				if (!IsFullScreen(hwnd))
+					EnumWindows(EnumWindowsProc, (LPARAM)hwnd);
+
 				inSendBackState = false;
 				ret = 1;
 			}
